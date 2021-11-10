@@ -21,7 +21,7 @@ def pattern(arg):
 
 
 def loop_dict(line, obj_update):
-    """ looping function for the adv tasks"""
+    """ looping function for the advanced tasks"""
     idx = 4
     while idx <= len(line):
         try:
@@ -81,7 +81,7 @@ class HBNBCommand(cmd.Cmd):
                 print("** class doesn't exist **")
 
     def do_destroy(self, argv):
-        """ Destroys an instance given the class name & id """
+        """ Destroys an instances given the class name & id """
         if len(argv) == 0:
             return print("** class name missing **")
         else:
@@ -102,19 +102,19 @@ class HBNBCommand(cmd.Cmd):
                 print("** class doesn't exist **")
 
     def do_all(self, line):
-        """prints all string representation of all instances
-        based or not on the class name"""
+        """ Retrieves and prints all string representation of all instances
+        based or not based on the class name"""
         if len(line) == 0:
             print([str(v) for v in models.storage.all().values()])
         elif line not in models.class_dict:
             print("** class doesn't exist **")
         else:
             print([str(v) for k, v in models.storage.all().items()
-                   if line in k]
+                   if line in k])
 
     def do_update(self, line):
-        """updates an instance based the class name and id by
-        adding or updating attribute"""
+        """ Updates an instance based on the class name and id by
+        adding or updating attributes"""
         if len(line) == 0:
             print("** class name missing **")
         else:
@@ -125,7 +125,7 @@ class HBNBCommand(cmd.Cmd):
                 try:
                     obj_id = line[0] + '.' + line[1]
                 except IndexError:
-                    print("** instance id **")
+                    print("** instance id missing **")
                 else:
                     try:
                         obj = models.storage.all()[obj_id]
@@ -147,7 +147,17 @@ class HBNBCommand(cmd.Cmd):
                                 if len(line) >= 5:
                                     loop_dict(line, obj)
             else:
-                print("** class doesn't exis **")
+                print("** class doesn't exist **")
+
+    def do_count(self, line):
+        """ Counts the number of instances of a class """
+        instance_cnt = 0
+        curr_dict = models.storage.all()
+        for key, val in curr_dict.items():
+            val = val.to_dict()
+            if val['__class__'] == line:
+                instance_cnt += 1
+        print(instance_cnt)
 
     def do_Amenity(self, arg):
         """ helper function for amenity class """
@@ -190,7 +200,8 @@ class HBNBCommand(cmd.Cmd):
 
     def do_quit(self, line):
         """ --- quit help documentation ---
-        The quit function closes the console gracefully """ True
+        The quit function closes the console gracefully """
+        return True
 
     def do_EOF(self, line):
         """ --- EOF help documentation ---
