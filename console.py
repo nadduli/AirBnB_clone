@@ -125,7 +125,7 @@ class HBNBCommand(cmd.Cmd):
                 try:
                     obj_id = line[0] + '.' + line[1]
                 except IndexError:
-                    print("** instance id missing **")
+                    print("** instance id **")
                 else:
                     try:
                         obj = models.storage.all()[obj_id]
