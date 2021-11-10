@@ -113,7 +113,7 @@ class HBNBCommand(cmd.Cmd):
                    if line in k]
 
     def do_update(self, line):
-        """updates an instance based on the class name and id by
+        """updates an instance based the class name and id by
         adding or updating attribute"""
         if len(line) == 0:
             print("** class name missing **")
