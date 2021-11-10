@@ -110,7 +110,7 @@ class HBNBCommand(cmd.Cmd):
             print("** class doesn't exist **")
         else:
             print([str(v) for k, v in models.storage.all().items()
-                   if line in k])
+                   if line in k]
 
     def do_update(self, line):
         """updates an instance based on the class name and id by
