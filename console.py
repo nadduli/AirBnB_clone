@@ -147,7 +147,7 @@ class HBNBCommand(cmd.Cmd):
                                 if len(line) >= 5:
                                     loop_dict(line, obj)
             else:
-                print("** class doesn't exist **")
+                print("** class doesn't exis **")
 
     def do_Amenity(self, arg):
         """ helper function for amenity class """
