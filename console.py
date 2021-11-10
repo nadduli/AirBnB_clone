@@ -190,8 +190,7 @@ class HBNBCommand(cmd.Cmd):
 
     def do_quit(self, line):
         """ --- quit help documentation ---
-        The quit function closes the console gracefully """
-        return True
+        The quit function closes the console gracefully """ True
 
     def do_EOF(self, line):
         """ --- EOF help documentation ---
