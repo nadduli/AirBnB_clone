@@ -1,15 +1,8 @@
 #!/usr/bin/python3
-
-from models.base_model import BaseModel
-
-'''User Class Module'''
+''' module for State class '''
+from .base_model import BaseModel
 
 
-class User(BaseModel):
-    '''User Class Definition'''
-
-    email = ''
-    password = ''
-    first_name = ''
-    last_name = ''
-
+class State(BaseModel):
+    ''' a State class '''
+    name = ''

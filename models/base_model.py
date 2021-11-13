@@ -1,44 +1,41 @@
 #!/usr/bin/python3
-'''Base Model Module'''
-
-import models
+''' module for BaseModel class '''
 from uuid import uuid4
 from datetime import datetime
+from . import storage
 
 
 class BaseModel:
-    """Class Base Model"""
-
-    def __init__(self, *args, **kwargs):
-        """Constructor"""
-        datenow = datetime.now()
+    ''' class of the base model of higher-level data models '''
+    def __init__(self, *arg, **kwargs):
+        ''' BaseModel constructor '''
         if kwargs:
-            for k, v in kwargs.items():
-                if k == '__class__':
-                    continue
+            for k in kwargs:
                 if k in ['created_at', 'updated_at']:
-                    v = datetime.strptime(v, "%Y-%m-%dT%H:%M:%S.%f")
-                self.__setattr__(k, v)
+                    setattr(self, k, datetime.fromisoformat(kwargs[k]))
+                elif k != '__class__':
+                    setattr(self, k, kwargs[k])
         else:
             self.id = str(uuid4())
-            self.created_at = datenow
-            self.updated_at = datenow
-            models.storage.new(self)
-
-    def __str__(self):
-        """String representation"""
-        return "[{}] ({}) {}".format(self.__class__.__name__, self.id,
-                                     self.__dict__)
+            self.created_at = datetime.utcnow()
+            self.updated_at = self.created_at.replace()
+            storage.new(self)
 
     def save(self):
-        """Updates the updated_at public instance attribute"""
-        self.updated_at = datetime.now()
-        models.storage.save()
+        ''' saves a model '''
+        self.updated_at = datetime.utcnow()
+        storage.save()
 
     def to_dict(self):
-        """Convert object to dictionary representation"""
+        ''' returns a dictionary representation of the model '''
         dct = self.__dict__.copy()
         dct['__class__'] = self.__class__.__name__
         dct['created_at'] = self.created_at.isoformat()
         dct['updated_at'] = self.updated_at.isoformat()
         return dct
+
+    def __str__(self):
+        ''' returns a string representation of the model '''
+        return '[{}] ({}) {}'.format(
+            self.__class__.__name__, self.id, self.__dict__)
+
