@@ -1,600 +1,548 @@
 #!/usr/bin/python3
-'''Test Console Module'''
-
-from console import HBNBCommand
-from unittest.mock import create_autospec
-from uuid import UUID
-import models
-import unittest
-import pep8
-import sys
-import io
+''' module for file_storage tests '''
+from unittest import TestCase
+from unittest.mock import patch
 import json
-from os import remove
-from os.path import isfile
-from models.base_model import BaseModel
+import re
+import sys
+from uuid import UUID, uuid4
 from datetime import datetime
+from time import sleep
+import os
 from io import StringIO
 
+from models import storage
+from models.amenity import Amenity
+from models.base_model import BaseModel
+from models.city import City
+from models.place import Place
+from models.review import Review
+from models.state import State
+from models.user import User
+from models.engine.file_storage import FileStorage
+from console import HBNBCommand
 
-class Test_01_Basic(unittest.TestCase):
-    '''Test Console Basic'''
 
-    def setUp(self):
-        self.mock_stdin = create_autospec(sys.stdin)
-        self.mock_stdout = create_autospec(sys.stdout)
-        self.out = StringIO()
-        sys.stdout = self.out
-        self.c = self.create()
-        models.storage._FileStorage__objects.clear()
+def clio(sio):
+    ''' clears a string i/o buffer '''
+    sio.seek(0)
+    sio.truncate(0)
 
-    def teardown(self):
-        sys.stdout = sys.__stdout__
-        try:
-            remove('file.json')
-        except:
-            pass
-        models.storage._FileStorage__objects.clear()
-        self.clearIO()
 
-    def clearIO(self):
-        self.out.truncate(0)
-        self.out.seek(0)
+class TestHBNBCommand(TestCase):
+    ''' tests HBNBCommand class '''
+    def test_6(self):
+        ''' task 6 test '''
+        FS_dict = FileStorage.__dict__
+        FS__path = '_FileStorage__file_path'
+        FS__objs = '_FileStorage__objects'
+        FS_path = FS_dict[FS__path]
+        FS_objs = FS_dict[FS__objs]
 
-    def create(self, server=None):
-        """create console instance"""
-        return HBNBCommand(stdin=self.mock_stdin, stdout=self.mock_stdout)
+        sio = StringIO()
+        with patch('sys.stdout', new=sio) as f:
+            app = HBNBCommand()
 
-    def _last_write(self, nr=None):
-        """:return: last `n` output lines"""
-        if nr is None:
-            return self.mock_stdout.write.call_args[0][0]
-        return "".join(map(lambda c: c[0][0],
-                           self.mock_stdout.write.call_args_list[-nr:]))
+            # TODO: help, quit and EOF validation
+            # help not empty
+            app.onecmd("help")
+            self.assertTrue(sio.getvalue())
 
-    def test_01_noinput(self):
-        self.assertFalse(self.c.onecmd("\n"))
-        self.assertEqual('', self.out.getvalue())
+    def test_7(self):
+        ''' task 7 test '''
+        FS_dict = FileStorage.__dict__
+        FS__path = '_FileStorage__file_path'
+        FS__objs = '_FileStorage__objects'
+        FS_path = FS_dict[FS__path]
+        FS_objs = FS_dict[FS__objs]
 
-    def test_02_quit(self):
-        """test quit command"""
-        self.assertTrue(self.c.onecmd("quit"))
-        self.assertTrue(self.c.onecmd("quit some random arguments"))
-        self.assertFalse(self.c.onecmd("Quit"))
-        self.assertEqual('*** Unknown syntax: Quit\n', self.out.getvalue())
-        self.clearIO()
+        sio = StringIO()
+        with patch('sys.stdout', new=sio) as f:
+            app = HBNBCommand()
 
-    def test_03_EOF(self):
-        """test EOF"""
-        self.assertTrue(self.c.onecmd("EOF"))
-        self.assertFalse(self.c.onecmd("eof"))
-        self.assertEqual('*** Unknown syntax: eof\n', self.out.getvalue())
-        self.clearIO()
+            # create
+            # no arg
+            clio(sio)
+            app.onecmd("create")
+            self.assertEqual(sio.getvalue(), "** class name missing **\n")
 
-    def test_04_create_fail(self):
-        """test create"""
-        self.assertFalse(self.c.onecmd('create'))
-        self.assertEqual('** class name missing **\n', self.out.getvalue())
-        self.clearIO()
-        self.assertFalse(self.c.onecmd('create someModel'))
-        self.assertEqual("** class doesn't exist **\n", self.out.getvalue())
-        self.clearIO()
+            # invalid arg
+            clio(sio)
+            app.onecmd("create ABC")
+            self.assertEqual(sio.getvalue(), "** class doesn't exist **\n")
+            clio(sio)
+            # case-sensitivity
+            app.onecmd("create basemodel")
+            self.assertEqual(sio.getvalue(), "** class doesn't exist **\n")
+            clio(sio)
+            app.onecmd("create Basemodel")
+            self.assertEqual(sio.getvalue(), "** class doesn't exist **\n")
+            clio(sio)
+            app.onecmd("create Base")
+            self.assertEqual(sio.getvalue(), "** class doesn't exist **\n")
+            clio(sio)
+            app.onecmd("create baseModel")
+            self.assertEqual(sio.getvalue(), "** class doesn't exist **\n")
 
-    def test_05_creat_success(self):
-        """test create success case
-        check if output is a valid uuid"""
-        self.assertFalse(self.c.onecmd('create BaseModel'))
-        testuuid = self.out.getvalue()[:-1]
-        uuid_obj = None
-        testRes = False
-        self.clearIO()
-        try:
-            uuid_obj = UUID(testuuid)
-            testRes = str(uuid_obj) == testuuid
-        except:
-            testRes = False
-        self.assertTrue(testRes)
+            # valid arg
+            clio(sio)
+            objs_k = storage.all().copy()
+            app.onecmd("create BaseModel")
+            # model creation
+            kid = 'BaseModel.{}'.format(sio.getvalue()[:-1])
+            self.assertTrue(kid not in objs_k and kid in storage.all() and
+                            type(storage.all()[kid]) == BaseModel)
+            # saved to file
+            with open(FS_path, 'r') as file:
+                tmp = json.load(file)
+                self.assertTrue(type(tmp) is dict and kid in tmp)
+            obj = storage.all()[kid]
+            storage.all().clear()
+            storage.reload()
+            self.assertTrue(kid in storage.all())
+            self.assertEqual(obj.to_dict(), storage.all()[kid].to_dict())
 
-    def test_06_all_no_arg(self):
-        """test all command with no arg"""
-        self.assertFalse(self.c.onecmd('all'))
-        self.assertEqual('[]\n', self.out.getvalue())
-        self.clearIO()
-        self.assertFalse(self.c.onecmd('create BaseModel'))
-        self.clearIO()
-        self.assertFalse(self.c.onecmd('all'))
-        l = json.loads(self.out.getvalue())
-        self.clearIO()
-        self.assertIsInstance(l, list)
-        self.assertEqual(len(l), 1)
-        for e in l:
-            self.assertIsInstance(e, str)
-        self.assertFalse(self.c.onecmd('create BaseModel'))
-        self.assertFalse(self.c.onecmd('create User'))
-        self.assertFalse(self.c.onecmd('create State'))
-        self.clearIO()
-        self.assertFalse(self.c.onecmd('all'))
-        l = json.loads(self.out.getvalue())
-        self.clearIO()
-        self.assertIsInstance(l, list)
-        self.assertEqual(len(l), 4)
-        for e in l:
-            self.assertIsInstance(e, str)
+            ##
+            ##
+            ##
+            ##
+            # show
+            # missing model
+            clio(sio)
+            app.onecmd("show")
+            self.assertEqual(sio.getvalue(), "** class name missing **\n")
 
-    def test_07_all_with_arg(self):
-        """test all command with arg"""
-        self.assertFalse(self.c.onecmd('create BaseModel'))
-        self.assertFalse(self.c.onecmd('create BaseModel'))
-        self.assertFalse(self.c.onecmd('create User'))
-        self.clearIO()
-        self.assertFalse(self.c.onecmd('all BaseModel'))
-        l = json.loads(self.out.getvalue())
-        self.clearIO()
-        self.assertIsInstance(l, list)
-        self.assertEqual(len(l), 2)
-        for e in l:
-            self.assertIsInstance(e, str)
-            self.assertTrue(self.checkObjStrType(e, 'BaseModel'))
-        self.assertFalse(self.c.onecmd('all User'))
-        l = json.loads(self.out.getvalue())
-        self.clearIO()
-        self.assertIsInstance(l, list)
-        self.assertEqual(len(l), 1)
-        for e in l:
-            self.assertIsInstance(e, str)
-            self.assertTrue(self.checkObjStrType(e, 'User'))
-        self.assertFalse(self.c.onecmd('all Amenity'))
-        l = json.loads(self.out.getvalue())
-        self.clearIO()
-        self.assertEqual(l, [])
+            # invalid model
+            clio(sio)
+            app.onecmd("show ABC")
+            self.assertEqual(sio.getvalue(), "** class doesn't exist **\n")
+            clio(sio)
+            # case-sensitivity
+            app.onecmd("show basemodel ")
+            self.assertEqual(sio.getvalue(), "** class doesn't exist **\n")
+            clio(sio)
+            app.onecmd("show Basemodel")
+            self.assertEqual(sio.getvalue(), "** class doesn't exist **\n")
+            clio(sio)
+            app.onecmd("show Base")
+            self.assertEqual(sio.getvalue(), "** class doesn't exist **\n")
+            clio(sio)
+            app.onecmd("create baseModel")
+            self.assertEqual(sio.getvalue(), "** class doesn't exist **\n")
 
-    def test_08_update_not_enough_arg(self):
-        """test update cmd fail on not enough arguments"""
-        self.assertFalse(self.c.onecmd('update'))
-        self.assertEqual('** class name missing **\n', self.out.getvalue())
-        self.clearIO()
-        self.assertFalse(self.c.onecmd('update something'))
-        self.assertEqual("** instance id missing **\n", self.out.getvalue())
-        self.clearIO()
-        self.assertFalse(self.c.onecmd('update something someid'))
-        self.assertEqual("** attribute name missing **\n", self.out.getvalue())
-        self.clearIO()
-        self.assertFalse(self.c.onecmd('update something someid someattr'))
-        self.assertEqual("** value missing **\n", self.out.getvalue())
+            # missing id
+            clio(sio)
+            app.onecmd("show BaseModel")
+            self.assertEqual(sio.getvalue(), "** instance id missing **\n")
+            clio(sio)
+            app.onecmd("show BaseModel ")
+            self.assertEqual(sio.getvalue(), "** instance id missing **\n")
 
-    def test_09_update_wrong_arg(self):
-        """test update fail on wrong arg"""
-        self.assertFalse(self.c.onecmd('update something someid atname atval'))
-        self.assertEqual("** class doesn't exist **\n", self.out.getvalue())
-        self.clearIO()
-        self.assertFalse(self.c.onecmd('update BaseModel someid atname atval'))
-        self.assertEqual("** no instance found **\n", self.out.getvalue())
-        self.clearIO()
+            # invalid id
+            clio(sio)
+            app.onecmd("show BaseModel dkkd")
+            self.assertEqual(sio.getvalue(), "** no instance found **\n")
+            clio(sio)
+            app.onecmd("show BaseModel {}".format(str(uuid4())))
+            self.assertEqual(sio.getvalue(), "** no instance found **\n")
 
-    def test_10_update_newattr(self):
-        """test adding attribute to object"""
-        self.c.onecmd('create BaseModel')
-        objid = self.out.getvalue()[:-1]
-        self.clearIO()
-        self.assertFalse(
-            self.c.onecmd('update BaseModel ' + objid +
-                          ' first_name  "Betty"'))
-        self.c.onecmd('all BaseModel')
-        self.assertTrue("'first_name': 'Betty'" in self.out.getvalue())
-        self.clearIO()
-        self.assertFalse(
-            self.c.onecmd('update BaseModel ' + objid + ' age  "16"'))
-        self.c.onecmd('all BaseModel')
-        self.assertTrue("'age': 16" in self.out.getvalue())
-        self.clearIO()
-        self.assertFalse(
-            self.c.onecmd('update BaseModel ' + objid + ' number  "5.0"'))
-        self.c.onecmd('all BaseModel')
-        self.assertTrue("'number': 5.0" in self.out.getvalue())
+            # valid args
+            clio(sio)
+            obj = BaseModel()
+            # correct string representation
+            self.assertEqual(str(obj), '[{}] ({}) {}'.format(
+                'BaseModel', obj.id, obj.__dict__))
 
-    def test_11_update_default_attr(self):
-        """test update cmd on existing attribute"""
-        self.c.onecmd('create Place')
-        objid = self.out.getvalue()[:-1]
-        self.clearIO()
-        self.assertFalse(
-            self.c.onecmd('update Place ' + objid +
-                          ' name  "San Francisco"'))
-        self.c.onecmd('all Place')
-        self.assertTrue("'name': 'San Francisco'" in self.out.getvalue())
-        self.clearIO()
-        self.assertFalse(
-            self.c.onecmd('update Place ' + objid +
-                          ' latitude  "90.0"'))
-        self.c.onecmd('all Place')
-        self.assertTrue("'latitude': 90.0" in self.out.getvalue())
-        self.clearIO()
-        self.assertFalse(
-            self.c.onecmd('update Place ' + objid +
-                          ' max_guest  "5"'))
-        self.c.onecmd('all Place')
-        self.assertTrue("'max_guest': 5" in self.out.getvalue())
-        self.clearIO()
+            key = 'BaseModel.{}'.format(obj.id)
+            app.onecmd("show BaseModel {}".format(obj.id))
+            self.assertEqual(sio.getvalue(), str(obj)+'\n')
+            clio(sio)
+            obj = BaseModel()
+            key = 'BaseModel.{}'.format(obj.id)
+            app.onecmd("show BaseModel {}".format(obj.id))
+            self.assertEqual(sio.getvalue(), str(obj)+'\n')
 
-    def test_12_update_too_many_arg(self):
-        """test update cmd on too many arguments"""
-        self.c.onecmd('create BaseModel')
-        objid = self.out.getvalue()[:-1]
-        self.clearIO()
-        self.assertFalse(
-            self.c.onecmd('update BaseModel ' + objid + ' age  "16"' +
-                          'number "15.0"'))
-        self.c.onecmd('all BaseModel')
-        self.assertTrue("'number': 16.0" not in self.out.getvalue())
-        self.clearIO()
+            # ## ???
+            # clio(sio)
+            # obj.id=str(uuid4())
+            # key = 'BaseModel.{}'.format(obj.id)
+            # app.onecmd("show BaseModel {}".format(obj.id))
+            # self.assertEqual(sio.getvalue(), str(obj)+'\n')
 
-    def test_13_show_fail(self):
-        """test show fail"""
-        self.c.onecmd('create BaseModel')
-        bmid = self.out.getvalue()[:-1]
-        self.c.onecmd('create BaseModel')
-        self.clearIO()
-        self.c.onecmd('create User')
-        usid = self.out.getvalue()[:-1]
-        self.clearIO()
-        self.assertFalse(self.c.onecmd('show'))
-        self.assertEqual("** class name missing **\n", self.out.getvalue())
-        self.clearIO()
-        self.assertFalse(self.c.onecmd('show something'))
-        self.assertEqual("** instance id missing **\n", self.out.getvalue())
-        self.clearIO()
-        self.assertFalse(self.c.onecmd('show something someid'))
-        self.assertEqual("** class doesn't exist **\n", self.out.getvalue())
-        self.clearIO()
-        self.assertFalse(self.c.onecmd('show BaseModel 1234'))
-        self.assertEqual("** no instance found **\n", self.out.getvalue())
-        self.clearIO()
-        self.assertFalse(self.c.onecmd('show BaseModel ' + usid))
-        self.assertEqual("** no instance found **\n", self.out.getvalue())
-        self.clearIO()
+            del storage.all()[key]
+            clio(sio)
+            app.onecmd("show BaseModel {}".format(obj.id))
+            self.assertEqual(sio.getvalue(), "** no instance found **\n")
 
-    def test_14_show_success(self):
-        """test show success"""
-        self.c.onecmd('create BaseModel')
-        bmid = self.out.getvalue()[:-1]
-        self.c.onecmd('create BaseModel')
-        self.clearIO()
-        self.c.onecmd('create User')
-        usid = self.out.getvalue()[:-1]
-        self.clearIO()
-        self.assertFalse(self.c.onecmd('show BaseModel ' + bmid))
-        self.assertTrue(bmid in self.out.getvalue())
-        self.clearIO()
-        self.assertFalse(self.c.onecmd('show User ' + usid))
-        self.assertTrue(usid in self.out.getvalue())
-        self.clearIO()
+            # precedence
+            clio(sio)
+            obj = BaseModel()
+            app.onecmd("show ABC {}".format(obj.id))  # valid id
+            self.assertEqual(sio.getvalue(), "** class doesn't exist **\n")
+            clio(sio)
+            app.onecmd("show ABC {}".format(str(uuid4())))  # invalid id
+            self.assertEqual(sio.getvalue(), "** class doesn't exist **\n")
 
-    def test_15_destroy_fail(self):
-        """test destroy fail"""
-        self.c.onecmd('create BaseModel')
-        bmid = self.out.getvalue()[:-1]
-        self.c.onecmd('create BaseModel')
-        self.clearIO()
-        self.c.onecmd('create User')
-        usid = self.out.getvalue()[:-1]
-        self.clearIO()
-        self.assertFalse(self.c.onecmd('destroy'))
-        self.assertEqual("** class name missing **\n", self.out.getvalue())
-        self.clearIO()
-        self.assertFalse(self.c.onecmd('destroy something'))
-        self.assertEqual("** instance id missing **\n", self.out.getvalue())
-        self.clearIO()
-        self.assertFalse(self.c.onecmd('destroy something someid'))
-        self.assertEqual("** class doesn't exist **\n", self.out.getvalue())
-        self.clearIO()
-        self.assertFalse(self.c.onecmd('destroy BaseModel 1234'))
-        self.assertEqual("** no instance found **\n", self.out.getvalue())
-        self.clearIO()
-        self.assertFalse(self.c.onecmd('destroy BaseModel ' + usid))
-        self.assertEqual("** no instance found **\n", self.out.getvalue())
-        self.clearIO()
+            ##
+            ##
+            ##
+            ##
+            # destroy
+            # missing model
+            clio(sio)
+            app.onecmd("destroy")
+            self.assertEqual(sio.getvalue(), "** class name missing **\n")
 
-    def test_16_destroy_success(self):
-        """test destroy success cases"""
-        self.c.onecmd('create BaseModel')
-        bmid = self.out.getvalue()[:-1]
-        self.c.onecmd('create BaseModel')
-        self.clearIO()
-        self.c.onecmd('create User')
-        usid = self.out.getvalue()[:-1]
-        self.clearIO()
-        self.assertFalse(self.c.onecmd('destroy BaseModel ' + bmid))
-        self.c.onecmd('all BaseModel')
-        self.assertFalse(bmid in self.out.getvalue())
-        self.clearIO()
-        self.assertFalse(self.c.onecmd('destroy User ' + usid))
-        self.assertFalse(usid in self.out.getvalue())
-        self.clearIO()
+            # invalid model
+            clio(sio)
+            app.onecmd("destroy ABC")
+            self.assertEqual(sio.getvalue(), "** class doesn't exist **\n")
+            clio(sio)
+            # case-sensitivity
+            app.onecmd("destroy basemodel ")
+            self.assertEqual(sio.getvalue(), "** class doesn't exist **\n")
+            clio(sio)
+            app.onecmd("destroy Basemodel")
+            self.assertEqual(sio.getvalue(), "** class doesn't exist **\n")
+            clio(sio)
+            app.onecmd("destroy Base")
+            self.assertEqual(sio.getvalue(), "** class doesn't exist **\n")
+            clio(sio)
+            app.onecmd("destroy baseModel")
+            self.assertEqual(sio.getvalue(), "** class doesn't exist **\n")
 
-    def test_51_method_fail_simple(self):
-        '''test call method fail'''
-        self.assertFalse(self.c.onecmd('create User'))
-        self.clearIO()
-        self.assertFalse(self.c.onecmd('BaseModel.'))
-        self.assertEqual('*** Unknown syntax: BaseModel.\n',
-                         self.out.getvalue())
-        self.clearIO()
-        self.assertFalse(self.c.onecmd('BaseModel.x'))
-        self.assertEqual('*** Unknown syntax: BaseModel.x\n',
-                         self.out.getvalue())
-        self.clearIO()
-        self.assertFalse(self.c.onecmd('BaseModel.y()'))
-        self.assertEqual('*** Unknown syntax: BaseModel.y()\n',
-                         self.out.getvalue())
-        self.clearIO()
+            # missing id
+            clio(sio)
+            app.onecmd("destroy BaseModel")
+            self.assertEqual(sio.getvalue(), "** instance id missing **\n")
+            clio(sio)
+            app.onecmd("destroy BaseModel ")
+            self.assertEqual(sio.getvalue(), "** instance id missing **\n")
 
-    def test_52_method_all_success(self):
-        '''test call method all success'''
-        self.assertFalse(self.c.onecmd('create BaseModel'))
-        self.assertFalse(self.c.onecmd('create BaseModel'))
-        self.assertFalse(self.c.onecmd('create User'))
-        self.clearIO()
-        self.assertFalse(self.c.onecmd('BaseModel.all()'))
-        l = json.loads(self.out.getvalue())
-        self.clearIO()
-        self.assertIsInstance(l, list)
-        self.assertEqual(len(l), 2)
-        for e in l:
-            self.assertIsInstance(e, str)
-            self.assertTrue(self.checkObjStrType(e, 'BaseModel'))
-        self.assertFalse(self.c.onecmd('User.all()'))
-        l = json.loads(self.out.getvalue())
-        self.clearIO()
-        self.assertIsInstance(l, list)
-        self.assertEqual(len(l), 1)
-        for e in l:
-            self.assertIsInstance(e, str)
-            self.assertTrue(self.checkObjStrType(e, 'User'))
-        self.assertFalse(self.c.onecmd('Amenity.all()'))
-        l = json.loads(self.out.getvalue())
-        self.clearIO()
-        self.assertEqual(l, [])
+            # invalid id
+            clio(sio)
+            app.onecmd("destroy BaseModel dkkd")
+            self.assertEqual(sio.getvalue(), "** no instance found **\n")
+            clio(sio)
+            app.onecmd("destroy BaseModel {}".format(str(uuid4())))
+            self.assertEqual(sio.getvalue(), "** no instance found **\n")
 
-    def test_53_method_all_fail(self):
-        '''test call method all failure'''
-        self.assertFalse(self.c.onecmd('create BaseModel'))
-        self.assertFalse(self.c.onecmd('create BaseModel'))
-        self.assertFalse(self.c.onecmd('create User'))
-        self.clearIO()
-        self.assertFalse(self.c.onecmd('Amenity.all'))
-        self.assertEqual('*** Unknown syntax: Amenity.all\n',
-                         self.out.getvalue())
-        self.clearIO()
-        self.assertFalse(self.c.onecmd('A.all()'))
-        self.assertEqual('*** Unknown syntax: A.all()\n',
-                         self.out.getvalue())
-        self.clearIO()
+            # valid args
+            clio(sio)
+            obj = BaseModel()
+            storage.save()
+            # correct string representation
+            self.assertEqual(str(obj), '[{}] ({}) {}'.format(
+                'BaseModel', obj.id, obj.__dict__))
 
-    def test_54_method_count(self):
-        '''test call method count'''
-        self.assertFalse(self.c.onecmd('create BaseModel'))
-        self.assertFalse(self.c.onecmd('create BaseModel'))
-        self.assertFalse(self.c.onecmd('create User'))
-        self.clearIO()
-        self.assertFalse(self.c.onecmd('BaseModel.count()'))
-        l = json.loads(self.out.getvalue())
-        self.clearIO()
-        self.assertEqual(l, 2)
-        self.assertFalse(self.c.onecmd('User.count()'))
-        l = json.loads(self.out.getvalue())
-        self.clearIO()
-        self.assertEqual(l, 1)
-        self.assertFalse(self.c.onecmd('Amenity.count()'))
-        l = json.loads(self.out.getvalue())
-        self.clearIO()
-        self.assertEqual(l, 0)
-        self.assertFalse(self.c.onecmd('BaseModel.count("a")'))
-        l = json.loads(self.out.getvalue())
-        self.clearIO()
-        self.assertEqual(l, 2)
-        self.assertFalse(self.c.onecmd('BaseModel.count(3)'))
-        l = json.loads(self.out.getvalue())
-        self.clearIO()
-        self.assertEqual(l, 2)
+            key = 'BaseModel.{}'.format(obj.id)
+            storage.all().clear()
+            storage.reload()
+            self.assertTrue(key in storage.all())
+            objs = storage.all()
+            objs_cp = objs.copy()
+            app.onecmd("destroy BaseModel {}".format(obj.id))
+            self.assertTrue(key not in storage.all())
+            objs.clear()
+            storage.reload()
+            self.assertTrue(key not in storage.all())
+            self.assertEqual(sio.getvalue(), '')
 
-    def test_55_method_count_fail(self):
-        '''test call method count fail'''
-        self.assertFalse(self.c.onecmd('create BaseModel'))
-        self.assertFalse(self.c.onecmd('create BaseModel'))
-        self.assertFalse(self.c.onecmd('create User'))
-        self.clearIO()
-        self.assertFalse(self.c.onecmd('Amenity.count'))
-        self.assertEqual('*** Unknown syntax: Amenity.count\n',
-                         self.out.getvalue())
-        self.clearIO()
-        self.assertFalse(self.c.onecmd('A.count()'))
-        self.assertEqual('*** Unknown syntax: A.count()\n',
-                         self.out.getvalue())
-        self.clearIO()
+            # precedence
+            clio(sio)
+            obj = BaseModel()
+            app.onecmd("destroy ABC {}".format(obj.id))  # valid id
+            self.assertEqual(sio.getvalue(), "** class doesn't exist **\n")
+            clio(sio)
+            app.onecmd("destroy ABC {}".format(str(uuid4())))  # invalid id
+            self.assertEqual(sio.getvalue(), "** class doesn't exist **\n")
 
-    def test_56_method_show_success(self):
-        '''test call method show success'''
-        self.assertFalse(self.c.onecmd('create BaseModel'))
-        self.assertFalse(self.c.onecmd('create BaseModel'))
-        self.assertFalse(self.c.onecmd('create User'))
-        self.clearIO()
-        self.assertFalse(self.c.onecmd('BaseModel.all()'))
-        output = json.loads(self.out.getvalue())
-        self.clearIO()
-        self.assertFalse(self.c.onecmd('User.all()'))
-        output += json.loads(self.out.getvalue())
-        self.clearIO()
-        self.assertIsInstance(output[0], str)
-        self.assertTrue(self.checkObjStrType(output[0], 'BaseModel'))
-        self.assertIsInstance(output[1], str)
-        self.assertTrue(self.checkObjStrType(output[1], 'BaseModel'))
-        self.assertIsInstance(output[1], str)
-        self.assertTrue(self.checkObjStrType(output[2], 'User'))
-        lst = [['BaseModel', output[0].split(' ', 2)[1][1:-1]],
-               ['BaseModel', output[1].split(' ', 2)[1][1:-1]],
-               ['User', output[2].split(' ', 2)[1][1:-1]]]
-        for e in lst:
-            testcmd = e[0] + '.show(' + e[1] + ')'
-            self.assertFalse(self.c.onecmd(testcmd))
-            l = self.out.getvalue()
-            self.clearIO()
-            self.assertTrue(self.checkObjStrType(l, e[0]))
+            # all
+            # invalid model
+            clio(sio)
+            app.onecmd("all ABC")
+            self.assertEqual(sio.getvalue(), "** class doesn't exist **\n")
+            clio(sio)
+            # case-sensitivity
+            app.onecmd("all basemodel ")
+            self.assertEqual(sio.getvalue(), "** class doesn't exist **\n")
+            clio(sio)
+            app.onecmd("all Basemodel")
+            self.assertEqual(sio.getvalue(), "** class doesn't exist **\n")
+            clio(sio)
+            app.onecmd("all Base")
+            self.assertEqual(sio.getvalue(), "** class doesn't exist **\n")
+            clio(sio)
+            app.onecmd("all baseModel")
+            self.assertEqual(sio.getvalue(), "** class doesn't exist **\n")
 
-    def test_57_method_show_failure(self):
-        '''test call method show failure'''
-        self.assertFalse(self.c.onecmd('create BaseModel'))
-        self.assertFalse(self.c.onecmd('create BaseModel'))
-        self.assertFalse(self.c.onecmd('create User'))
-        self.clearIO()
-        self.assertFalse(self.c.onecmd('Amenity.show'))
-        self.assertEqual('*** Unknown syntax: Amenity.show\n',
-                         self.out.getvalue())
-        self.clearIO()
-        self.assertFalse(self.c.onecmd('A.show()'))
-        self.assertEqual('*** Unknown syntax: A.show()\n',
-                         self.out.getvalue())
-        self.clearIO()
-        self.assertFalse(self.c.onecmd('BaseModel.show("1234")'))
-        self.assertEqual('** no instance found **\n',
-                         self.out.getvalue())
-        self.clearIO()
+            # valid args
+            clio(sio)
+            obj = BaseModel()
+            # correct string representation
+            self.assertEqual(str(obj), '[{}] ({}) {}'.format(
+                'BaseModel', obj.id, obj.__dict__))
+            key = 'BaseModel.{}'.format(obj.id)
+            app.onecmd("all")
+            siov = sio.getvalue()
+            self.assertTrue(siov.endswith('\n'))
+            self.assertEqual(sorted(json.loads(siov)),
+                             sorted([str(v) for v in storage.all().values()]))
 
-    def test_58_method_destroy_success(self):
-        '''test call method destroy success'''
-        self.assertFalse(self.c.onecmd('create BaseModel'))
-        self.assertFalse(self.c.onecmd('create BaseModel'))
-        self.assertFalse(self.c.onecmd('create User'))
-        self.clearIO()
-        self.assertFalse(self.c.onecmd('BaseModel.all()'))
-        output = json.loads(self.out.getvalue())
-        self.clearIO()
-        self.assertFalse(self.c.onecmd('User.all()'))
-        output += json.loads(self.out.getvalue())
-        self.clearIO()
-        self.assertIsInstance(output[0], str)
-        self.assertTrue(self.checkObjStrType(output[0], 'BaseModel'))
-        self.assertIsInstance(output[1], str)
-        self.assertTrue(self.checkObjStrType(output[1], 'BaseModel'))
-        self.assertIsInstance(output[1], str)
-        self.assertTrue(self.checkObjStrType(output[2], 'User'))
-        lst = [['BaseModel', output[0].split(' ', 2)[1][1:-1]],
-               ['BaseModel', output[1].split(' ', 2)[1][1:-1]],
-               ['User', output[2].split(' ', 2)[1][1:-1]]]
-        for e in lst:
-            testcmd = e[0] + '.destroy(' + e[1] + ')'
-            self.assertFalse(self.c.onecmd(testcmd))
-            l = self.out.getvalue()
-            self.clearIO()
+            clio(sio)
+            obj = BaseModel()
+            # correct string representation
+            self.assertEqual(str(obj), '[{}] ({}) {}'.format(
+                'BaseModel', obj.id, obj.__dict__))
+            key = 'BaseModel.{}'.format(obj.id)
+            app.onecmd("all BaseModel")
+            siov = sio.getvalue()
+            self.assertTrue(siov.endswith('\n'))
+            try:
+                self.assertEqual(sorted(json.loads(siov)),
+                                 sorted([str(v) for v in storage.all().values()
+                                         if type(v) is BaseModel]))
+            except Exception as err:
+                self.assertTrue(False)
 
-    def test_59_method_destroy_failure(self):
-        '''test call method destroy failure'''
-        self.assertFalse(self.c.onecmd('create BaseModel'))
-        self.assertFalse(self.c.onecmd('create BaseModel'))
-        self.assertFalse(self.c.onecmd('create User'))
-        self.clearIO()
-        self.assertFalse(self.c.onecmd('Amenity.destroy'))
-        self.assertEqual('*** Unknown syntax: Amenity.destroy\n',
-                         self.out.getvalue())
-        self.clearIO()
-        self.assertFalse(self.c.onecmd('A.destroy()'))
-        self.assertEqual('*** Unknown syntax: A.destroy()\n',
-                         self.out.getvalue())
-        self.clearIO()
-        self.assertFalse(self.c.onecmd('BaseModel.destroy("1234")'))
-        self.assertEqual('** no instance found **\n',
-                         self.out.getvalue())
-        self.clearIO()
+            # update
+            # missing model
+            clio(sio)
+            app.onecmd("update")
+            self.assertEqual(sio.getvalue(), "** class name missing **\n")
 
-    def test_60_method_upd_attr_success(self):
-        '''test call method upd attr success'''
-        self.assertFalse(self.c.onecmd('create BaseModel'))
-        self.assertFalse(self.c.onecmd('create BaseModel'))
-        self.assertFalse(self.c.onecmd('create User'))
-        self.clearIO()
-        self.assertFalse(self.c.onecmd('BaseModel.all()'))
-        output = json.loads(self.out.getvalue())
-        self.clearIO()
-        self.assertFalse(self.c.onecmd('User.all()'))
-        output += json.loads(self.out.getvalue())
-        self.clearIO()
-        self.assertIsInstance(output[0], str)
-        self.assertTrue(self.checkObjStrType(output[0], 'BaseModel'))
-        self.assertIsInstance(output[1], str)
-        self.assertTrue(self.checkObjStrType(output[1], 'BaseModel'))
-        self.assertIsInstance(output[1], str)
-        self.assertTrue(self.checkObjStrType(output[2], 'User'))
-        lst = [['BaseModel', output[0].split(' ', 2)[1][1:-1]],
-               ['BaseModel', output[1].split(' ', 2)[1][1:-1]],
-               ['User', output[2].split(' ', 2)[1][1:-1]]]
-        for e in lst:
-            testcmd = e[0] + '.update(' + e[1] + ', "test", "test")'
-            self.assertFalse(self.c.onecmd(testcmd))
-            l = self.out.getvalue()
-            self.clearIO()
+            # invalid model
+            clio(sio)
+            app.onecmd("update ABC")
+            self.assertEqual(sio.getvalue(), "** class doesn't exist **\n")
+            clio(sio)
+            # case-sensitivity
+            app.onecmd("update basemodel ")
+            self.assertEqual(sio.getvalue(), "** class doesn't exist **\n")
+            clio(sio)
+            app.onecmd("update Basemodel")
+            self.assertEqual(sio.getvalue(), "** class doesn't exist **\n")
+            clio(sio)
+            app.onecmd("update Base")
+            self.assertEqual(sio.getvalue(), "** class doesn't exist **\n")
+            clio(sio)
+            app.onecmd("update baseModel")
+            self.assertEqual(sio.getvalue(), "** class doesn't exist **\n")
 
-    def test_61_method_upd_attr_failure(self):
-        '''test call method upd attr failure'''
-        self.assertFalse(self.c.onecmd('create BaseModel'))
-        self.assertFalse(self.c.onecmd('create BaseModel'))
-        self.assertFalse(self.c.onecmd('create User'))
-        self.clearIO()
-        self.assertFalse(self.c.onecmd('Amenity.update'))
-        self.assertEqual('*** Unknown syntax: Amenity.update\n',
-                         self.out.getvalue())
-        self.clearIO()
-        self.assertFalse(self.c.onecmd('A.update()'))
-        self.assertEqual('*** Unknown syntax: A.update()\n',
-                         self.out.getvalue())
-        self.clearIO()
-        self.assertFalse(self.c.onecmd(
-            'BaseModel.update("1234-1234", "test", "test")'))
-        self.assertEqual('** no instance found **\n',
-                         self.out.getvalue())
-        self.clearIO()
+            # missing id
+            clio(sio)
+            app.onecmd("update BaseModel")
+            self.assertEqual(sio.getvalue(), "** instance id missing **\n")
+            clio(sio)
+            app.onecmd("update BaseModel   ")
+            self.assertEqual(sio.getvalue(), "** instance id missing **\n")
 
-    def test_62_method_upd_dict_success(self):
-        '''test call method upd dict success'''
-        self.assertFalse(self.c.onecmd('create BaseModel'))
-        self.assertFalse(self.c.onecmd('create BaseModel'))
-        self.assertFalse(self.c.onecmd('create User'))
-        self.clearIO()
-        self.assertFalse(self.c.onecmd('BaseModel.all()'))
-        output = json.loads(self.out.getvalue())
-        self.clearIO()
-        self.assertFalse(self.c.onecmd('User.all()'))
-        output += json.loads(self.out.getvalue())
-        self.clearIO()
-        self.assertIsInstance(output[0], str)
-        self.assertTrue(self.checkObjStrType(output[0], 'BaseModel'))
-        self.assertIsInstance(output[1], str)
-        self.assertTrue(self.checkObjStrType(output[1], 'BaseModel'))
-        self.assertIsInstance(output[1], str)
-        self.assertTrue(self.checkObjStrType(output[2], 'User'))
-        lst = [['BaseModel', output[0].split(' ', 2)[1][1:-1]],
-               ['BaseModel', output[1].split(' ', 2)[1][1:-1]],
-               ['User', output[2].split(' ', 2)[1][1:-1]]]
-        for e in lst:
-            testcmd = e[0] + '.update(' + e[1] + ", {'test': 'test'})"
-            self.assertFalse(self.c.onecmd(testcmd))
-            l = self.out.getvalue()
-            self.clearIO()
+            # invalid id
+            clio(sio)
+            app.onecmd("update BaseModel abc")
+            self.assertEqual(sio.getvalue(), "** no instance found **\n")
+            clio(sio)
+            app.onecmd("update BaseModel {}".format(str(uuid4())))
+            self.assertEqual(sio.getvalue(), "** no instance found **\n")
 
-    def test_63_method_upd_dict_failure(self):
-        '''test call method upd dict failure'''
-        self.assertFalse(self.c.onecmd('create BaseModel'))
-        self.assertFalse(self.c.onecmd('create BaseModel'))
-        self.assertFalse(self.c.onecmd('create User'))
-        self.clearIO()
-        self.assertFalse(self.c.onecmd(
-            'BaseModel.update("1234-1234", {"test", "test"})'))
-        self.assertEqual('** no instance found **\n',
-                         self.out.getvalue())
-        self.clearIO()
+            # missing attribute
+            clio(sio)
+            obj = BaseModel()
+            app.onecmd("update BaseModel {}".format(obj.id))
+            self.assertEqual(sio.getvalue(), "** attribute name missing **\n")
 
-    @staticmethod
-    def checkObjStrType(e, t):
-        """check if e is a string representation of type 't'"""
-        return (e[e.find('['): e.find(']') + 1] == '[' + t + ']')
+            # missing value
+            clio(sio)
+            obj = BaseModel()
+            app.onecmd("update BaseModel {} updated_at".format(obj.id))
+            self.assertEqual(sio.getvalue(), "** value missing **\n")
+            clio(sio)
+            obj = BaseModel()
+            app.onecmd("update BaseModel {} updated_at    ".format(obj.id))
+            self.assertEqual(sio.getvalue(), "** value missing **\n")
 
-if __name__ == '__main__':
-    unittest.main()
+            # valid args
+            clio(sio)
+            obj = BaseModel()
+            key = 'BaseModel.{}'.format(obj.id)
+            # correct string representation
+            self.assertEqual(str(obj), '[{}] ({}) {}'.format(
+                'BaseModel', obj.id, obj.__dict__))
+
+            app.onecmd('update BaseModel {} email "abc@def.com"'.format(
+                obj.id))
+            self.assertEqual(sio.getvalue(), '')
+            self.assertEqual(getattr(obj, 'email', ''), 'abc@def.com')
+            # persistence
+            storage.all().clear()
+            storage.reload()
+            self.assertEqual(getattr(storage.all()[key], 'email', ''),
+                             'abc@def.com')
+
+            # extra args ignored
+            clio(sio)
+            obj = storage.all()[key]
+            app.onecmd('update BaseModel {} email "abcd@def.com" name ghk'
+                       .format(obj.id))
+            self.assertEqual(sio.getvalue(), '')
+            self.assertEqual(getattr(obj, 'email', ''), 'abcd@def.com')
+            self.assertFalse(hasattr(obj, 'name'))
+
+            # precedence
+            clio(sio)
+            obj = BaseModel()
+            app.onecmd("update ABC {}".format(obj.id))  # valid id
+            self.assertEqual(sio.getvalue(), "** class doesn't exist **\n")
+
+            clio(sio)
+            app.onecmd("update ABC {}".format(str(uuid4())))  # invalid id
+            self.assertEqual(sio.getvalue(), "** class doesn't exist **\n")
+            clio(sio)
+            app.onecmd("update ABC {} email".format(
+                obj.id))  # valid id and attribute
+            self.assertEqual(sio.getvalue(), "** class doesn't exist **\n")
+            clio(sio)
+            app.onecmd('update ABC {} email "abc@123.com"'.format(
+                obj.id))  # valid id, attribute and value
+            self.assertEqual(sio.getvalue(), "** class doesn't exist **\n")
+
+    def test_8(self):
+        '''tests for task 8 in console app and User class'''
+        console = HBNBCommand()
+        buf = StringIO()
+
+        with patch('sys.stdout', new=buf) as f:
+            # test [ create ] command with User class
+            console.onecmd('create User')
+            user_id = buf.getvalue().strip()
+            self.assertTrue(user_id)
+            clio(buf)
+
+            # test [ show ] command with the last User created
+            console.onecmd('show User ' + user_id)
+            self.assertTrue(('[User] (' + user_id + ')') in buf.getvalue())
+            clio(buf)
+
+            # test [ all ] command with User class
+            console.onecmd('all User')
+            self.assertTrue(('[User] (' + user_id + ')') in buf.getvalue())
+            clio(buf)
+
+            # test [ update ] command in the last user created with
+            # comma seperated args
+            console.onecmd(
+                'update User ' + user_id +
+                ' first_name updatedName'
+                )
+            console.onecmd('show User ' + user_id)
+            self.assertTrue("'first_name': 'updatedName'" in buf.getvalue())
+            clio(buf)
+
+            # test [ destroy ] command to destroy last created User
+            console.onecmd('destroy User ' + user_id)
+            self.assertEqual(buf.getvalue(), "")
+            console.onecmd('show User ' + user_id)
+            self.assertEqual(buf.getvalue(), "** no instance found **\n")
+            clio(buf)
+
+    def test_11(self):
+        '''tests for task 11 about dot commands syntax for the all command'''
+        console = HBNBCommand()
+        buf = StringIO()
+
+        with patch('sys.stdout', new=buf) as f:
+            console.onecmd('create State')
+            state_id = buf.getvalue().strip()
+            clio(buf)
+            line = console.precmd('State.all()')
+            console.onecmd(line)
+            self.assertTrue(state_id in buf.getvalue())
+            clio(buf)
+
+    def test_12(self):
+        '''tests for task 12 about dot commands syntax for the count command'''
+        console = HBNBCommand()
+        buf = StringIO()
+
+        with patch('sys.stdout', new=buf) as f:
+            console.onecmd('create State')
+            clio(buf)
+            line = console.precmd('State.count()')
+            console.onecmd(line)
+            self.assertTrue(0 <= int(buf.getvalue()))
+            clio(buf)
+
+    def test_13(self):
+        '''tests for task 13 about dot commands syntax for the show command'''
+        console = HBNBCommand()
+        buf = StringIO()
+
+        with patch('sys.stdout', new=buf) as f:
+            console.onecmd('create State')
+            state_id = buf.getvalue().strip()
+            clio(buf)
+            line = console.precmd('State.show(' + state_id + ')')
+            console.onecmd(line)
+            self.assertTrue(state_id in buf.getvalue())
+            clio(buf)
+
+    def test_14(self):
+        ''' tests for task 14 about dot commands syntax for
+            the destroy command
+        '''
+        console = HBNBCommand()
+        buf = StringIO()
+
+        with patch('sys.stdout', new=buf) as f:
+            console.onecmd('create Review')
+            review_id = buf.getvalue().strip()
+            clio(buf)
+            line = console.precmd('Review.destroy(' + review_id + ')')
+            console.onecmd(line)
+            clio(buf)
+            console.onecmd('show Review ' + review_id)
+            self.assertEqual(buf.getvalue(), "** no instance found **\n")
+            clio(buf)
+
+    def test_15(self):
+        '''tests for task 15 about dot commands syntax for the update command
+            with quoted strings
+        '''
+        console = HBNBCommand()
+        buf = StringIO()
+
+        with patch('sys.stdout', new=buf) as f:
+            console.onecmd('create Review')
+            review_id = buf.getvalue().strip()
+            clio(buf)
+            line = console.precmd(
+                'Review.update(' + review_id +
+                ', text, "this room is good")'
+                )
+            console.onecmd(line)
+            console.onecmd('show Review ' + review_id)
+            self.assertTrue("'text': 'this room is good'" in buf.getvalue())
+            clio(buf)
+
+    def test_16(self):
+        '''tests for task 16 about dot commands syntax for the update command
+            but using dictionarry arguments and quoted strings
+        '''
+        console = HBNBCommand()
+        buf = StringIO()
+
+        with patch('sys.stdout', new=buf) as f:
+            console.onecmd('create Review')
+            review_id = buf.getvalue().strip()
+            clio(buf)
+            line = console.precmd(
+                'Review.update(' + review_id +
+                ", {'text': 'worth it', 'user name': 'not me'})"
+                )
+            console.onecmd(line)
+            console.onecmd('show Review ' + review_id)
+            self.assertTrue(
+                "'text': 'worth it', 'user name': 'not me'" in buf.getvalue()
+                )
+            clio(buf)
+
